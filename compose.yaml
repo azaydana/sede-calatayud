@@ -1,0 +1,84 @@
+# compose.yaml · Todos los contenedores de la sede, en un solo fichero (DS2)
+#
+# Se levanta desde esta carpeta con:   docker compose up -d --build
+#
+# - Las rutas que empiezan por ./ son relativas a esta carpeta: ./web/html es web/html del repositorio.
+# - Las ${CLAVES} se leen solas del fichero .env de esta carpeta.
+# - Imágenes siempre con versión: nada de latest (DS5).
+#
+# Plantilla: rellenad lo que va entre < > y borrad las líneas que empiezan por "Plantilla:".
+
+services:
+
+  # ============================================================ web · IAW
+  web:
+    build: ./web                      # la imagen se construye con web/Dockerfile
+
+    ports:
+      - "80:80"                       # puerto del servidor : puerto del contenedor
+
+    volumes:                          # ./carpeta del repositorio : ruta dentro del contenedor : ro
+      - ./web/html:<ruta del contenido dentro del contenedor>:ro
+      # Plantilla: si montáis los sitios en vez de copiarlos en el Dockerfile, una línea por fichero.
+      # - ./web/sitios/<fichero>.conf:<carpeta de sitios de la imagen>/<fichero>.conf:ro
+      - ./secretos/intranet.htpasswd:<la ruta de vuestro AuthUserFile>:ro
+
+    environment:                      # variables que ve PHP con getenv()
+      DB_HOST: db                     # el nombre del servicio de la base de datos, más abajo
+      DB_NOMBRE: ${DB_NOMBRE}
+      DB_USUARIO: ${DB_USUARIO}       # D3: la web debería tener su propio usuario (investigación de BD, apartado 3)
+      DB_CLAVE: ${DB_CLAVE}
+
+    networks: [frontal, trasera]      # frontal para el aula, trasera para hablar con db
+
+    depends_on:
+      db:
+        condition: service_healthy    # no arranca hasta que la base de datos está lista
+
+    restart: unless-stopped           # vuelve sola cuando se reinicia el servidor
+
+
+  # ============================================================ db · ASGBD
+  # Por ahora, como en el paso 6 de la investigación web.
+  # Para hacerlo bien (D2 a D5), la investigación de base de datos, apartados 2, 3 y 6.
+  # Lo que necesite, en la carpeta db/.
+  db:
+    image: postgres:<versión mayor>   # la del estándar, con la versión fijada (D1)
+
+    environment:
+      POSTGRES_DB: ${DB_NOMBRE}
+      POSTGRES_USER: ${DB_USUARIO}
+      POSTGRES_PASSWORD: ${DB_CLAVE}
+
+    volumes:
+      - datos:/var/lib/postgresql/data    # los datos, en un volumen: sobreviven al contenedor
+
+    networks: [trasera]               # solo en la red interna: desde el aula no se llega
+
+    healthcheck:                      # cómo sabe Compose que la base de datos está lista
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  # ============================================================ dns · SRI          (más adelante)
+  # dns:
+  #   image: <imagen de BIND>:<versión>
+  #   volumes:
+  #     - ./dns/<fichero>:<ruta dentro del contenedor>:ro
+
+
+  # ============================================================ git · Optativo     (más adelante)
+  # git:
+  #   image: codeberg.org/forgejo/forgejo:<versión>
+
+
+volumes:
+  datos:                              # Docker lo crea la primera vez
+
+networks:
+  frontal:                            # Docker crea las dos redes: nada de external
+  trasera:
+    internal: true                    # red sin salida: solo se ven los contenedores entre sí

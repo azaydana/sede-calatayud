@@ -2,11 +2,9 @@
 #
 # Se levanta desde esta carpeta con:   docker compose up -d --build
 #
-# - Las rutas que empiezan por ./ son relativas a esta carpeta: ./web/html es web/html del repositorio.
+# - Las rutas que empiezan por ./ son relativas a esta carpeta: ./web/conf es web/conf del repositorio.
 # - Las ${CLAVES} se leen solas del fichero .env de esta carpeta.
 # - Imágenes siempre con versión: nada de latest (DS5).
-#
-# Plantilla: rellenad lo que va entre < > y borrad las líneas que empiezan por "Plantilla:".
 
 services:
 
@@ -17,16 +15,14 @@ services:
     ports:
       - "80:80"                       # puerto del servidor : puerto del contenedor
 
-    volumes:                          # ./carpeta del repositorio : ruta dentro del contenedor : ro
-      - ./web/html:<ruta del contenido dentro del contenedor>:ro
-      # Plantilla: si montáis los sitios en vez de copiarlos en el Dockerfile, una línea por fichero.
-      # - ./web/sitios/<fichero>.conf:<carpeta de sitios de la imagen>/<fichero>.conf:ro
-      - ./secretos/intranet.htpasswd:<la ruta de vuestro AuthUserFile>:ro
+    volumes:
+      # El fichero de contraseñas de la intranet, fuera de Git: lo genera instalar.sh (DS3).
+      - ./secretos/intranet.htpasswd:/etc/apache2/conf-custom/htpasswd:ro
 
     environment:                      # variables que ve PHP con getenv()
       DB_HOST: db                     # el nombre del servicio de la base de datos, más abajo
       DB_NOMBRE: ${DB_NOMBRE}
-      DB_USUARIO: ${DB_USUARIO}       # D3: la web debería tener su propio usuario (investigación de BD, apartado 3)
+      DB_USUARIO: ${DB_USUARIO}       # D3: la web tiene su propio usuario, limitado a su BD
       DB_CLAVE: ${DB_CLAVE}
 
     networks: [frontal, trasera]      # frontal para el aula, trasera para hablar con db
@@ -39,11 +35,10 @@ services:
 
 
   # ============================================================ db · ASGBD
-  # Por ahora, como en el paso 6 de la investigación web.
-  # Para hacerlo bien (D2 a D5), la investigación de base de datos, apartados 2, 3 y 6.
-  # Lo que necesite, en la carpeta db/.
+  # Nace con su tabla y sus 25 filas: db/init/01-esquema.sql se ejecuta al
+  # crear el volumen por primera vez (DS6). El usuario solo ve su BD (D3).
   db:
-    image: postgres:<versión mayor>   # la del estándar, con la versión fijada (D1)
+    image: postgres:16-alpine         # versión mayor fijada (D1)
 
     environment:
       POSTGRES_DB: ${DB_NOMBRE}
@@ -51,7 +46,8 @@ services:
       POSTGRES_PASSWORD: ${DB_CLAVE}
 
     volumes:
-      - datos:/var/lib/postgresql/data    # los datos, en un volumen: sobreviven al contenedor
+      - ./db/init:/docker-entrypoint-initdb.d:ro   # esquema + filas al nacer
+      - datos:/var/lib/postgresql/data             # datos en volumen: sobreviven
 
     networks: [trasera]               # solo en la red interna: desde el aula no se llega
 
@@ -63,16 +59,46 @@ services:
     restart: unless-stopped
 
 
-  # ============================================================ dns · SRI          (más adelante)
-  # dns:
-  #   image: <imagen de BIND>:<versión>
-  #   volumes:
-  #     - ./dns/<fichero>:<ruta dentro del contenedor>:ro
+  # ============================================================ dns · SRI
+  # ns1 (10.4.0.1). El secundario ns2 (10.4.0.2) es un nodo de GNS3: dns/ns2/.
+  dns:
+    image: internetsystemsconsortium/bind9:9.18
+
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+
+    volumes:
+      - ./dns/config/named.conf.options:/etc/bind/named.conf.options:ro
+      - ./dns/config/named.conf.local:/etc/bind/named.conf.local:ro
+      - ./dns/zones:/var/lib/bind:ro
+
+    networks: [frontal]
+
+    restart: unless-stopped
 
 
-  # ============================================================ git · Optativo     (más adelante)
-  # git:
-  #   image: codeberg.org/forgejo/forgejo:<versión>
+  # ============================================================ git · Forgejo (optativo)
+  # git.calatayud.empresa.lan responde vía proxy en web/conf/site.conf.
+  # SSH de git por el 2222 (el 22 del anfitrión es del sshd del servidor).
+  git:
+    image: codeberg.org/forgejo/forgejo:8
+
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+
+    ports:
+      - "2222:22"
+
+    volumes:
+      - ./forgejo/data:/var/lib/gitea
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+    networks: [frontal]
+
+    restart: unless-stopped
 
 
 volumes:

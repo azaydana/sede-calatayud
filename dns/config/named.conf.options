@@ -1,0 +1,57 @@
+acl "red_interna" {
+    127.0.0.1;
+    10.4.0.0/24;
+    // Docker NAT: lo publicado en 127.0.0.1:53 llega al contenedor
+    // con origen 172.22.0.1 (bridge 'lan'). Sin esto, el propio
+    // servidor consultando a 127.0.0.1 recibe REFUSED.
+    172.22.0.0/16;
+};
+
+acl "red_aula" {
+    192.168.6.0/24;
+};
+
+options {
+    directory "/var/cache/bind";
+
+    // Escucha: dentro del contenedor debe ser any; el filtrado se hace con ACLs.
+    // Se desactiva IPv6 (sin conectividad -> evitaba timeouts a root servers).
+    listen-on { any; };
+    listen-on-v6 { none; };
+
+    recursion yes;
+    // N8: solo la sede resuelve internet. El aula puede preguntar por
+    // datos autoritativos (allow-query) pero NO recursión ni caché:
+    // un nombre de internet desde el aula -> REFUSED (prueba 5).
+    // N7+N9: la interna sí tiene recursión + caché.
+    allow-query { red_interna; red_aula; };
+    allow-query-cache { red_interna; };
+    allow-recursion { red_interna; };
+
+    // Solo forwarders: evita iterativas directas a Internet (más rápido,
+    // menos timeouts IPv6 vistos en logs) y reduce superficie.
+    forward only;
+    forwarders {
+        1.1.1.1;
+        8.8.8.8;
+    };
+
+    // Endurecimiento + rendimiento
+    version none;
+    hostname none;
+    server-id none;
+    minimal-responses yes;
+    max-cache-size 256m;
+    max-recursion-queries 50;
+    max-udp-size 1232;
+
+    // Rate limiting anti-amplificación/DoS.
+    // 20 rps tiraba navegación real (logs: slip/drop a 10.4.0.10).
+    // 100 rps + ventana 5 sigue protegiendo sin romper clientes.
+    rate-limit {
+        responses-per-second 100;
+        window 5;
+    };
+
+    dnssec-validation auto;
+};

@@ -1,0 +1,46 @@
+{ "Dhcp4": {
+    // red/kea/dhcp4.json · SRI · ASO · DHCP de la red interna (10.4.0.0/24)
+    // Los __MARCADORES__ los sustituye instalar.sh con sede.env y el resultado
+    // entra como /etc/kea/kea-dhcp4.conf en el servicio kea-dhcp4-server.
+    // Los PCs de la interna piden IP a __IP_INTERNA__, que es a la vez puerta y DNS.
+    "interfaces-config": {
+        "interfaces": [ "__INTERFAZ_INTERNA__/__IP_INTERNA__" ],
+        "service-sockets-require-all": false,
+        "service-sockets-retry-wait-time": 5000,
+        "service-sockets-max-retries": 100
+    },
+    "control-socket": {
+        "socket-type": "unix",
+        "socket-name": "/kea/sockets/kea4-ctrl-socket"
+    },
+    "lease-database": {
+        "type": "memfile",
+        "persist": true,
+        "name": "/kea/leases/dhcp4.csv",
+        "lfc-interval": 3600
+    },
+    "valid-lifetime": 3600,
+    "renew-timer": 900,
+    "rebind-timer": 1800,
+    "subnet4": [
+        {
+            "id": 1,
+            "subnet": "10.4.0.0/24",
+            // Dejar libres 10.4.0.1 (ns1) y 10.4.0.2 (ns2): fichas fijas de dns/zones/
+            "pools": [ { "pool": "10.4.0.10 - 10.4.0.200" } ],
+            "option-data": [
+                { "name": "routers", "data": "__IP_INTERNA__" },
+                { "name": "domain-name-servers", "data": "__IP_INTERNA__" },
+                { "name": "domain-name", "data": "__DOMINIO__" },
+                { "name": "broadcast-address", "data": "10.4.0.255" }
+            ]
+        }
+    ],
+    "loggers": [
+        {
+            "name": "kea-dhcp4",
+            "output_options": [ { "output": "stdout" }, { "output": "/var/log/kea/kea.log" } ],
+            "severity": "INFO"
+        }
+    ]
+} }

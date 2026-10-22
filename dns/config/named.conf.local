@@ -1,0 +1,21 @@
+// Maestro de calatayud.empresa.lan (ns1 = 10.4.0.1, esclavo ns2 = 10.4.0.2)
+// NOTA: "primary" sustituye al obsoleto "master" (BIND >= 9.16).
+
+// Zona directa
+zone "calatayud.empresa.lan" {
+    type primary;
+    file "/var/lib/bind/db.calatayud.empresa.lan";
+    allow-transfer { 10.4.0.2; }; // N3: solo ns2 puede pedir transferencia
+    also-notify { 10.4.0.2; };    // N4: notificación inmediata de cambios
+    allow-query { any; };         // datos autoritativos públicos; la recursión sigue restringida en options
+};
+
+// Zona inversa 10.4.0.0/24 -> los octetos se invierten: 10.4.0.x = 0.4.10.in-addr.arpa
+// (antes: 4.10.in-addr.arpa, que cubre 10.4.x.x y NUNCA resolvía -> NXDOMAIN siempre)
+zone "0.4.10.in-addr.arpa" {
+    type primary;
+    file "/var/lib/bind/db.10.4";
+    allow-transfer { 10.4.0.2; };
+    also-notify { 10.4.0.2; };
+    allow-query { any; };
+};

@@ -1,0 +1,19 @@
+// ns2 — zonas en modo secundario (N2/N3/N4).
+// N3: el maestro solo permite transferir a 10.4.0.2; aquí no se
+// permite transferir a nadie. N4: also-notify en ns1 + refresh bajo.
+
+zone "calatayud.empresa.lan" {
+    type secondary;
+    primaries { 10.4.0.1; };
+    file "/var/cache/bind/db.calatayud.empresa.lan";
+    allow-transfer { none; };
+    allow-query { any; };
+};
+
+zone "0.4.10.in-addr.arpa" {
+    type secondary;
+    primaries { 10.4.0.1; };
+    file "/var/cache/bind/db.10.4";
+    allow-transfer { none; };
+    allow-query { any; };
+};

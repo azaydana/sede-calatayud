@@ -1,0 +1,15 @@
+$TTL 86400
+@ IN SOA ns1.calatayud.empresa.lan. admin.calatayud.empresa.lan. (
+    2026091801 ; Serial AAAAMMDDNN (igual que la directa)
+    3600       ; Refresh
+    600        ; Retry
+    604800     ; Expire
+    86400 )    ; Minimum TTL
+;
+@   IN  NS  ns1.calatayud.empresa.lan.
+@   IN  NS  ns2.calatayud.empresa.lan.
+; Una IP -> un PTR canónico. .1 aloja ns1/srv/correo: se publica ns1.
+1   IN  PTR ns1.calatayud.empresa.lan.
+2   IN  PTR ns2.calatayud.empresa.lan.
+10  IN  PTR pc-01.calatayud.empresa.lan.
+11  IN  PTR pc-02.calatayud.empresa.lan.

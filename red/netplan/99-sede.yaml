@@ -1,0 +1,27 @@
+# red/netplan/99-sede.yaml · SRI · ASO
+# Esta ficha lleva __MARCADORES__: instalar.sh la copia a /etc/netplan/99-sede.yaml
+# sustituyéndolos con los valores de sede.env. No editar el fichero instalado.
+#
+# Dos interfaces:
+# - INTERFAZ_AULA   (enp5s0): IP fija del aula, la que se usa para SSH y la web publicada.
+# - INTERFAZ_INTERNA (enp6s0): IP_INTERNA (10.4.0.1), puerta de la red interna de GNS3
+#   y donde escucha Kea (DHCP). La regla de NAT de red/nftables saca el tráfico de la
+#   interna por la interfaz del aula.
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    __INTERFAZ_AULA__:
+      dhcp4: false
+      addresses: [__IP_AULA__/24]
+      routes:
+        - to: default
+          via: __PUERTA_AULA__
+      nameservers:
+        # Mientras el DNS de la sede no esté listo, resuelve el del centro (sede.env)
+        addresses: [__RESOLUTOR_CENTRO__]
+    __INTERFAZ_INTERNA__:
+      dhcp4: false
+      addresses: [__IP_INTERNA__/24]
+      # Sin puerta de enlace en la interna: la salida la hace el NAT del servidor.

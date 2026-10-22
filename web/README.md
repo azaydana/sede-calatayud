@@ -1,43 +1,26 @@
 # web/ · IAW
 
-`Dockerfile` de la imagen propia, sitios de Apache y contenido (`www`, `intranet`, página de estado).
+`Dockerfile` de la imagen propia, sitios de Apache y contenido (`publica`,
+`privada`, `www`, página de estado).
 
-FROM php:8.2-apache
+- `Dockerfile`: `php:8.2-apache` con `pdo_pgsql` (conexión con PostgreSQL), los
+  módulos de Apache necesarios (`proxy` para el vhost de git), y el contenido
+  y la configuración copiados dentro de la imagen.
+- `conf/site.conf`: los tres VirtualHosts que entran en la imagen como
+  `000-default.conf`:
+  - `www.calatayud.empresa.lan` → `publica/`, acceso abierto.
+  - `intranet.calatayud.empresa.lan` → `privada/`, auth basic.
+  - `git.calatayud.empresa.lan` → proxy hacia `forgejo:3000` (compose).
+- `publica/`: web principal + `estado.php` (comprueba la conexión con la BD).
+- `privada/`: panel de la intranet, PHP: estado de PostgreSQL, recursos del
+  servidor, servicios y tareas. Credenciales SIEMPRE desde entorno
+  (`DB_HOST`, `DB_NOMBRE`, `DB_USUARIO`, `DB_CLAVE`, que `compose.yaml` pasa
+  desde `.env`).
+- `www/`: sitio de pruebas con `estado.php` (versión del gestor y número de
+  filas, con consulta preparada).
 
-# IAW: Imagen propia con Apache + PHP y soporte PostgreSQL.
-# Se documenta cada línea.
-
- Instalar la extensión pgsql/pdo_pgsql para conectar con PostgreSQL,
- activar los módulos de Apache necesarios y limpiar la caché de APT.
-
-RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev \
-    && docker-php-ext-install pgsql pdo_pgsql \
-    && a2enmod proxy proxy_http headers rewrite \
-    && rm -rf /var/lib/apt/lists/*
-
- Copiar el fichero de contraseñas de la intranet (auth basic)
- 
-COPY conf/htpasswd /etc/apache2/conf-custom/htpasswd
-
- Copiar la configuración de los VirtualHosts (www + intranet)
- 
-COPY conf/sitios.conf /etc/apache2/sites-available/000-default.conf
-
-# Copiar el contenido web a la imagen (pueden cambiar ya que son archivos muy basicos):
-# - publica: web principal (www.calatayud.empresa.lan)
-COPY publica/ /var/www/html/publica/
-# - privada: intranet protegida con htpasswd (intranet.calatayud.empresa.lan)
-COPY privada/ /var/www/html/privada/
-# - www: copia del sitio con su página de estado (estado.php)
-COPY www/ /var/www/html/www/
-
-# Permitir acceso a los directorios copiados y dar permisos de lectura
-RUN chmod -R 755 /var/www/html
-
-# Puerto expuesto por Apache
-EXPOSE 80
-
-
-El fichero de contraseñas de la intranet no va aquí: va en `secretos/intranet.htpasswd`, fuera de Git, y se monta desde `compose.yaml`.
-
-Plantilla: borrad esta línea y explicad qué hay.
+El fichero de contraseñas de la intranet NO va en Git ni dentro de la imagen:
+`instalar.sh` lo genera en `secretos/intranet.htpasswd` a partir de `.env` y
+`compose.yaml` lo monta en `/etc/apache2/conf-custom/htpasswd` (DS3).
+La imagen se reconstruye con `docker compose up -d --build`
+(paso 5 de `instalar.sh`).

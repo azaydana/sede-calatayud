@@ -1,4 +1,15 @@
 # Claves de verdad: solo en el servidor
 .env
+
 # Lo que instalar.sh genera a partir de .env (htpasswd, certificados…)
 secretos/
+
+# Copias de seguridad: fuera del repositorio, pesan y contienen datos
+db/backups/*
+!db/backups/.gitkeep
+forgejo/backups/
+# Datos vivos de Forgejo (se crean en el primer arranque)
+forgejo/data/
+
+# Volcado del proyecto GNS3 pesado (los ficheros del proyecto entran, las
+# imágenes/capturas grandes no): nada por ahora, pruébalo con du -sh gns3/

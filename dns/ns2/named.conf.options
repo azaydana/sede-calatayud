@@ -1,0 +1,32 @@
+// ns2 (10.4.0.2, GNS3) — secundario de calatayud.empresa.lan
+// Copiar a /etc/bind/ del ns2. Maestro: 10.4.0.1 (ns1).
+
+acl "red_interna" {
+    127.0.0.1;
+    10.4.0.0/24;
+};
+
+acl "red_aula" {
+    192.168.6.0/24;
+};
+
+options {
+    directory "/var/cache/bind";
+    listen-on { any; };
+    listen-on-v6 { none; };
+
+    // Igual que ns1 (N8): solo la interna recurre a internet.
+    recursion yes;
+    allow-query { red_interna; red_aula; };
+    allow-query-cache { red_interna; };
+    allow-recursion { red_interna; };
+
+    forward only;
+    forwarders { 1.1.1.1; 8.8.8.8; };
+
+    version none;
+    hostname none;
+    server-id none;
+    minimal-responses yes;
+    notify no; // el secundario no notifica
+};

@@ -1,0 +1,31 @@
+$TTL    86400
+@       IN      SOA     ns1.calatayud.empresa.lan. admin.calatayud.empresa.lan. (
+                            2026091801 ; Serial AAAAMMDDNN (incrementar en cada cambio)
+                                3600   ; Refresh (1h, antes 7d: el esclavo tardaba días en ver cambios)
+                                 600   ; Retry (10min, antes 1d)
+                              604800   ; Expire (1 semana)
+                               86400 ) ; Negative Cache TTL (1d)
+
+; Servidores de nombres autoritativos
+@       IN      NS      ns1.calatayud.empresa.lan.
+@       IN      NS      ns2.calatayud.empresa.lan.
+
+; Registro de correo MX
+@       IN      MX  10  correo.calatayud.empresa.lan.
+
+; Registros A
+ns1     IN      A       10.4.0.1
+ns2     IN      A       10.4.0.2
+; srv = reachable desde las DOS redes:
+;  - 192.168.6.118 = red aula (los PC del aula NO llegan a 10.4.0.x)
+;  - 10.4.0.1      = red interna laboratorio
+srv     IN      A       192.168.6.118
+correo  IN      A       10.4.0.1
+pc-01   IN      A       10.4.0.10
+pc-02   IN      A       10.4.0.11
+
+; Aliases CNAME apuntando a srv (relativos -> se expanden a srv.calatayud.empresa.lan.)
+www       IN    CNAME   srv
+intranet  IN    CNAME   srv
+git       IN    CNAME   srv
+db        IN    CNAME   srv

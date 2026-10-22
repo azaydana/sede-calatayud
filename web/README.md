@@ -7,17 +7,20 @@ FROM php:8.2-apache
 # IAW: Imagen propia con Apache + PHP y soporte PostgreSQL.
 # Se documenta cada línea.
 
-# Instalar la extensión pgsql/pdo_pgsql para conectar con PostgreSQL,
-# activar los módulos de Apache necesarios y limpiar la caché de APT.
+ Instalar la extensión pgsql/pdo_pgsql para conectar con PostgreSQL,
+ activar los módulos de Apache necesarios y limpiar la caché de APT.
+
 RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev \
     && docker-php-ext-install pgsql pdo_pgsql \
     && a2enmod proxy proxy_http headers rewrite \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar el fichero de contraseñas de la intranet (auth basic)
+ Copiar el fichero de contraseñas de la intranet (auth basic)
+ 
 COPY conf/htpasswd /etc/apache2/conf-custom/htpasswd
 
-# Copiar la configuración de los VirtualHosts (www + intranet)
+ Copiar la configuración de los VirtualHosts (www + intranet)
+ 
 COPY conf/sitios.conf /etc/apache2/sites-available/000-default.conf
 
 # Copiar el contenido web a la imagen (pueden cambiar ya que son archivos muy basicos):

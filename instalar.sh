@@ -91,9 +91,32 @@ fi
 
 # Paquetes que la sede necesita. En un Ubuntu recién instalado no hay Docker.
 # Solo se instala lo que falta (DS8).
+instalado() {
+    # dpkg -s también da por bueno un paquete a medias o desinstalado con su config
+    dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
+}
+
+# apt con dependencias rotas de antes no instala nada: se dice y se para
+if ! apt-get check >/dev/null 2>&1; then
+    echo "ERROR: apt tiene paquetes a medias de antes. Arregladlo y repetid:"
+    echo "       sudo apt --fix-broken install"
+    exit 1
+fi
+
 PAQUETES=""
-for P in docker.io docker-compose-v2 docker-buildx apache2-utils nftables; do
-    dpkg -s "$P" >/dev/null 2>&1 || PAQUETES="$PAQUETES $P"
+# Docker: si ya funciona (de Ubuntu o del repositorio de docker.com), no se toca:
+# mezclar docker-ce con docker.io rompe las dependencias
+if docker compose version >/dev/null 2>&1; then
+    if ! docker buildx version >/dev/null 2>&1; then
+        echo "AVISO: docker compose sin buildx: si falla la construcción de web, instaladlo"
+    fi
+else
+    for P in docker.io docker-compose-v2 docker-buildx; do
+        instalado "$P" || PAQUETES="$PAQUETES $P"
+    done
+fi
+for P in apache2-utils nftables; do
+    instalado "$P" || PAQUETES="$PAQUETES $P"
 done
 if [ -n "$PAQUETES" ]; then
     echo "Instalando:$PAQUETES"

@@ -11,5 +11,5 @@ Proyecto de GNS3 de la red interna y la configuración de sus nodos.
 
 Antes de abrir el proyecto debe estar: el servidor GNS3 en marcha y el enlace de
 la red interna conectado a la interfaz del servidor (`INTERFAZ_INTERNA` en
-`sede.env`), Kea sirviendo DHCP (paso 3 de `instalar.sh`) y el contenedor `dns`
-levantado (paso 5).
+`sede.env`), y los contenedores `kea` (DHCP) y `dns` levantados (paso 5 de
+`instalar.sh`).

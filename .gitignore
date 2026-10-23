@@ -13,3 +13,6 @@ forgejo/data/
 
 # Volcado del proyecto GNS3 pesado (los ficheros del proyecto entran, las
 # imágenes/capturas grandes no): nada por ahora, pruébalo con du -sh gns3/
+
+# Configuración que instalar.sh genera a partir de sede.env (Kea)
+generado/

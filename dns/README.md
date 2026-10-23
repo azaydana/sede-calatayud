@@ -2,6 +2,8 @@
 
 BIND en contenedor: configuración, zonas directa e inversa, primario y secundario.
 
+- `config/named.conf`: sustituye al de la imagen `internetsystemsconsortium/bind9`,
+  que no incluye nada; carga `named.conf.options` y `named.conf.local`.
 - `config/named.conf.options`: recursión, ACLs (red interna + red aula), forwarders
   del centro, rate limit y endurecimiento. Solo la red interna recurre a internet.
 - `config/named.conf.local`: zonas de `calatayud.empresa.lan` en modo `primary`,
@@ -16,4 +18,6 @@ BIND en contenedor: configuración, zonas directa e inversa, primario y secundar
 
 Llega al contenedor por volumen en `compose.yaml` (sucursal `dns`): configs a
 `/etc/bind/` como `:ro` y zonas a `/var/lib/bind/`. El servicio publica el 53/tcp
-y 53/udp del servidor.
+y 53/udp del servidor (por eso el paso 2 apaga el stub de systemd-resolved). La
+ACL `red_interna` permite `172.22.0.0/16`, la subred que `compose.yaml` fija para
+la red `frontal`: así el propio servidor puede preguntar a `127.0.0.1`.

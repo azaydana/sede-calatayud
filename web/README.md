@@ -10,7 +10,7 @@
   `000-default.conf`:
   - `www.calatayud.empresa.lan` → `publica/`, acceso abierto.
   - `intranet.calatayud.empresa.lan` → `privada/`, auth basic.
-  - `git.calatayud.empresa.lan` → proxy hacia `forgejo:3000` (compose).
+  - `git.calatayud.empresa.lan` → proxy hacia `git:3000` (el servicio Forgejo de compose).
 - `publica/`: web principal + `estado.php` (comprueba la conexión con la BD).
 - `privada/`: panel de la intranet, PHP: estado de PostgreSQL, recursos del
   servidor, servicios y tareas. Credenciales SIEMPRE desde entorno

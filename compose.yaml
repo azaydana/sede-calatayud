@@ -64,11 +64,13 @@ services:
   dns:
     image: internetsystemsconsortium/bind9:9.18
 
-    ports:
-      - "53:53/tcp"
+    ports:                            # el 53 del anfitrión queda libre: instalar.sh apaga
+      - "53:53/tcp"                   # el stub de systemd-resolved (paso 2)
       - "53:53/udp"
 
     volumes:
+      # El named.conf de esta imagen no incluye nada: el nuestro carga options y local.
+      - ./dns/config/named.conf:/etc/bind/named.conf:ro
       - ./dns/config/named.conf.options:/etc/bind/named.conf.options:ro
       - ./dns/config/named.conf.local:/etc/bind/named.conf.local:ro
       - ./dns/zones:/var/lib/bind:ro
@@ -87,12 +89,16 @@ services:
     environment:
       USER_UID: "1000"
       USER_GID: "1000"
+      # Las URLs de clonado que enseña Forgejo: nombre del proxy y SSH por el 2222
+      FORGEJO__server__ROOT_URL: http://git.calatayud.empresa.lan/
+      FORGEJO__server__SSH_DOMAIN: git.calatayud.empresa.lan
+      FORGEJO__server__SSH_PORT: "2222"
 
     ports:
       - "2222:22"
 
     volumes:
-      - ./forgejo/data:/var/lib/gitea
+      - ./forgejo/data:/data                       # la imagen guarda todo en /data
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
 
@@ -101,10 +107,33 @@ services:
     restart: unless-stopped
 
 
+  # ============================================================ kea · SRI · ASO
+  # DHCP de la red interna (10.4.0.10-200). En la red del anfitrión: tiene que
+  # oír los broadcast de INTERFAZ_INTERNA. La configuración la genera instalar.sh
+  # (paso 3) desde red/kea/dhcp4.json con los datos de sede.env.
+  kea:
+    image: jonasal/kea-dhcp4:3.0
+
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW]     # sockets en bruto para DHCP
+
+    volumes:
+      - ./generado/kea/dhcp4.json:/kea/config/dhcp4.json:ro
+      - kea-leases:/kea/leases                     # concesiones: sobreviven
+
+    restart: unless-stopped
+
+
 volumes:
-  datos:                              # Docker lo crea la primera vez
+  datos:                              # Docker los crea la primera vez
+  kea-leases:
 
 networks:
   frontal:                            # Docker crea las dos redes: nada de external
+    ipam:
+      config:
+        # Subred fija: la ACL red_interna de dns/config/named.conf.options la
+        # permite (las consultas del propio servidor llegan desde su puerta, .0.1)
+        - subnet: 172.22.0.0/16
   trasera:
     internal: true                    # red sin salida: solo se ven los contenedores entre sí

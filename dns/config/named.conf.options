@@ -2,7 +2,7 @@ acl "red_interna" {
     127.0.0.1;
     10.4.0.0/24;
     // Docker NAT: lo publicado en 127.0.0.1:53 llega al contenedor
-    // con origen 172.22.0.1 (bridge 'lan'). Sin esto, el propio
+    // con origen 172.22.0.1 (red 'frontal', subred fijada en compose.yaml). Sin esto, el propio
     // servidor consultando a 127.0.0.1 recibe REFUSED.
     172.22.0.0/16;
 };

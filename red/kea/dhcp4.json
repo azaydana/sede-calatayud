@@ -1,7 +1,8 @@
 { "Dhcp4": {
     // red/kea/dhcp4.json · SRI · ASO · DHCP de la red interna (10.4.0.0/24)
     // Los __MARCADORES__ los sustituye instalar.sh con sede.env y el resultado
-    // entra como /etc/kea/kea-dhcp4.conf en el servicio kea-dhcp4-server.
+    // queda en generado/kea/dhcp4.json, que monta el contenedor kea (compose.yaml).
+    // Las rutas /kea/... son las de la imagen jonasal/kea-dhcp4.
     // Los PCs de la interna piden IP a __IP_INTERNA__, que es a la vez puerta y DNS.
     "interfaces-config": {
         "interfaces": [ "__INTERFAZ_INTERNA__/__IP_INTERNA__" ],
@@ -39,7 +40,7 @@
     "loggers": [
         {
             "name": "kea-dhcp4",
-            "output_options": [ { "output": "stdout" }, { "output": "/var/log/kea/kea.log" } ],
+            "output_options": [ { "output": "stdout" } ],
             "severity": "INFO"
         }
     ]

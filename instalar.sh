@@ -20,9 +20,10 @@ cd "$(dirname "$0")"
 # Cargamos los datos de la sede. A partir de aquí existen $SEDE, $DOMINIO, $IP_AULA…
 source sede.env
 
-echo "== 0. Comprobaciones antes de tocar nada"
+echo "== 0. Comprobaciones y paquetes"
 
-# Este paso no cambia nada: mira que todo está listo y, si falta algo, dice qué y para (exit 1).
+# Primero mira que todo está listo y, si falta algo, dice qué y para (exit 1).
+# Solo al final instala los paquetes que falten.
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: este script es root-only: sudo ./instalar.sh"
@@ -47,36 +48,48 @@ for V in DB_NOMBRE DB_USUARIO DB_CLAVE INTRANET_USUARIO INTRANET_CLAVE; do
     fi
 done
 
-# ¿Docker y Compose instalados? Sin ellos no hay sede.
-if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
-    echo "ERROR: falta Docker con el plugin compose (docker compose version)"
-    exit 1
-fi
-
 # ¿Los ficheros que van a entrar en contenedores están en su sitio?
-for F in web/Dockerfile web/conf/site.conf db/init/01-esquema.sql dns/config/named.conf.local \
-         dns/config/named.conf.options dns/zones/db.calatayud.empresa.lan dns/zones/db.10.4; do
+for F in web/Dockerfile web/conf/site.conf db/init/01-esquema.sql dns/config/named.conf \
+         dns/config/named.conf.local dns/config/named.conf.options \
+         dns/zones/db.calatayud.empresa.lan dns/zones/db.10.4 red/kea/dhcp4.json; do
     if [ ! -f "$F" ]; then
         echo "ERROR: falta $F en el repositorio"
         exit 1
     fi
 done
 
-# ¿Las interfaces de sede.env existen? La del aula es imprescindible;
-# la interna avisa: sin ella no hay DHCP ni NAT, pero el resto sigue.
+# ¿La interfaz de sede.env existe? Sin ella el netplan dejaría el servidor sin red.
 if [ ! -d "/sys/class/net/$INTERFAZ_AULA" ]; then
-    echo "ERROR: la interfaz del aula no existe: $INTERFAZ_AULA (muerda con ip a)"
+    echo "ERROR: la interfaz del aula no existe: $INTERFAZ_AULA (miradla con ip a y corregid sede.env)"
     exit 1
 fi
-if [ ! -d "/sys/class/net/$INTERFAZ_INTERNA" ]; then
-    echo "AVISO: la interfaz de la red interna no existe hoy: $INTERFAZ_INTERNA"
-    echo "       Haz ip a y corrige INTERFAZ_INTERNA en sede.env; hasta entonces, sin DHCP interno."
+# Las dos IPs van en la misma tarjeta (red/netplan/99-sede.yaml)
+if [ "$INTERFAZ_INTERNA" != "$INTERFAZ_AULA" ]; then
+    echo "ERROR: INTERFAZ_INTERNA tiene que ser la misma que INTERFAZ_AULA en sede.env"
+    exit 1
 fi
 
 # ¿Hay claves públicas para instalar? (sistema/usuarios/*.pub, una por persona)
 N_CLAVES=$(find sistema/usuarios -maxdepth 1 -name '*.pub' 2>/dev/null | wc -l)
 if [ "$N_CLAVES" -eq 0 ]; then
     echo "AVISO: no hay claves públicas en sistema/usuarios/ — el paso 1 solo instalará sshd base"
+fi
+
+# Paquetes que la sede necesita. En un Ubuntu recién instalado no hay Docker.
+# Solo se instala lo que falta (DS8).
+PAQUETES=""
+for P in docker.io docker-compose-v2 docker-buildx apache2-utils nftables; do
+    dpkg -s "$P" >/dev/null 2>&1 || PAQUETES="$PAQUETES $P"
+done
+if [ -n "$PAQUETES" ]; then
+    echo "Instalando:$PAQUETES"
+    apt-get update -qq
+    apt-get install -y -qq $PAQUETES
+fi
+systemctl enable --now docker
+if ! docker compose version >/dev/null 2>&1; then
+    echo "ERROR: docker compose no funciona tras instalar los paquetes"
+    exit 1
 fi
 
 echo "== 1. Usuarios y SSH (ASO)"
@@ -89,6 +102,11 @@ for PUB in sistema/usuarios/*.pub; do
         useradd -m -s /bin/bash "$PERSONA"
         echo "Usuario creado: $PERSONA"
     fi
+    # Administradores de la sede: grupo sudo (sudo les pedirá su contraseña)
+    usermod -aG sudo "$PERSONA"
+    if passwd -S "$PERSONA" | awk '{exit !($2 == "L" || $2 == "NP")}'; then
+        echo "AVISO: $PERSONA no tiene contraseña: no podrá usar sudo. Ponédsela con: sudo passwd $PERSONA"
+    fi
     # Authorized_keys: idempotente, la clave solo entra si no estaba (DS8)
     install -d -m 700 -o "$PERSONA" -g "$PERSONA" "/home/$PERSONA/.ssh"
     if ! grep -qxF "$(cat "$PUB")" "/home/$PERSONA/.ssh/authorized_keys" 2>/dev/null; then
@@ -100,8 +118,22 @@ done
 
 # Endurecer SSH, SOLO si existe alguna clave instalada:
 # cerrar la contraseña antes de poner claves = quedarse fuera del servidor.
+# Tampoco si quien ejecuta esto (sudo) no tiene clave: perdería su propio SSH.
+ENDURECER=no
 if [ "$N_CLAVES" -gt 0 ]; then
-    install -m 644 sistema/ssh/99-sede-hardening.conf /etc/ssh/sshd_config.d/99-sede-hardening.conf
+    ENDURECER=si
+    QUIEN="${SUDO_USER:-root}"
+    CASA=$(getent passwd "$QUIEN" | cut -d: -f6)
+    if [ "$QUIEN" != "root" ] && [ ! -s "$CASA/.ssh/authorized_keys" ]; then
+        ENDURECER=no
+        echo "AVISO: $QUIEN no tiene clave SSH: no se cierra la contraseña para no dejarle fuera."
+        echo "       Entrad con uno de los usuarios de sistema/usuarios/ y repetid sudo ./instalar.sh"
+    fi
+fi
+if [ "$ENDURECER" = "si" ]; then
+    # Antes se llamaba 99-… y cloud-init (50-…) le ganaba: fuera el viejo
+    rm -f /etc/ssh/sshd_config.d/99-sede-hardening.conf
+    install -m 644 sistema/ssh/00-sede-hardening.conf /etc/ssh/sshd_config.d/00-sede-hardening.conf
     # Validar antes de recargar: un fichero roto no puede dejarnos fuera
     if sshd -t 2>/dev/null; then
         systemctl reload ssh
@@ -130,7 +162,23 @@ sed -e "s/__INTERFAZ_AULA__/$INTERFAZ_AULA/" \
     -e "s/__IP_INTERNA__/$IP_INTERNA/" \
     red/netplan/99-sede.yaml > /etc/netplan/99-sede.yaml
 chmod 600 /etc/netplan/99-sede.yaml
+# Si el servidor aún no tiene IP_AULA, quien entró por SSH a la IP de la
+# instalación (DHCP) pierde la sesión al aplicar. (sudo borra SSH_CONNECTION.)
+if ! ip -4 -o addr show "$INTERFAZ_AULA" | grep -qw "$IP_AULA"; then
+    echo "AVISO: el servidor pasa a $IP_AULA: si estáis por SSH a otra IP, la sesión se cortará."
+    echo "       Volved a entrar a $IP_AULA y repetid sudo ./instalar.sh (Ctrl+C en 10 s para parar)."
+    sleep 10
+fi
 netplan apply
+
+# El 53 del servidor es del contenedor dns: el stub de systemd-resolved
+# (127.0.0.53:53) se apaga y el servidor resuelve con lo que dé el netplan.
+if systemctl is-active --quiet systemd-resolved; then
+    mkdir -p /etc/systemd/resolved.conf.d
+    install -m 644 red/resolved/90-sede.conf /etc/systemd/resolved.conf.d/90-sede.conf
+    systemctl restart systemd-resolved
+    ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+fi
 
 # Reenvío de paquetes: la interna solo sale si el servidor reenvía
 install -m 644 red/kernel/90-sede.conf /etc/sysctl.d/90-sede.conf
@@ -148,37 +196,35 @@ systemctl enable --now sede-nat.service
 echo "NAT de la red interna activo ($RED_INTERNA sale por $INTERFAZ_AULA)."
 
 
-echo "== 3. DHCP de la red interna: Kea (SRI · ASO)"
+echo "== 3. DHCP de la red interna: configuración de Kea (SRI · ASO)"
 
-# Kea en el host (no en contenedor): la red interna es un segmento físico de GNS3.
-# Si el paquete no está en este Ubuntu, se avisa y se sigue: que dé la IP GNS3.
-if apt-cache show kea-dhcp4-server >/dev/null 2>&1; then
-    if ! dpkg -s kea-dhcp4-server >/dev/null 2>&1; then
-        apt-get install -y -qq kea-dhcp4-server
-    fi
-    sed -e "s/__INTERFAZ_INTERNA__/$INTERFAZ_INTERNA/" \
-        -e "s/__IP_INTERNA__/$IP_INTERNA/" \
-        -e "s/__DOMINIO__/$DOMINIO/" \
-        red/kea/dhcp4.json > /etc/kea/kea-dhcp4.conf
-    mkdir -p /kea/sockets /kea/leases /var/log/kea
-    systemctl restart kea-dhcp4-server
-    systemctl enable kea-dhcp4-server
-    echo "Kea instalado: 10.4.0.10-200 con puerta y DNS en $IP_INTERNA."
-else
-    echo "AVISO: kea-dhcp4-server no está en los repos; DHCP vía GNS3 o instalación manual."
+# Kea va en contenedor (servicio kea de compose.yaml, red del anfitrión): no
+# depende de que este Ubuntu traiga el paquete. Aquí solo se genera su
+# configuración; arranca en el paso 5 con los demás.
+mkdir -p generado/kea
+sed -e "s/__INTERFAZ_INTERNA__/$INTERFAZ_INTERNA/" \
+    -e "s/__IP_INTERNA__/$IP_INTERNA/" \
+    -e "s/__DOMINIO__/$DOMINIO/" \
+    red/kea/dhcp4.json > generado/kea/dhcp4.json
+chmod 644 generado/kea/dhcp4.json
+# Un Kea del host (versión anterior de este script) le quitaría el puerto 67
+if systemctl is-enabled --quiet kea-dhcp4-server 2>/dev/null; then
+    systemctl disable --now kea-dhcp4-server
 fi
+echo "Kea: 10.4.0.10-200 con puerta y DNS en $IP_INTERNA (generado/kea/dhcp4.json)."
 
 
 echo "== 4. Secretos de la web (DS3 · IAW)"
 
 # El htpasswd de la intranet se regenera SIEMPRE desde .env: quedan sincronizados.
-apt-get install -y -qq apache2-utils
 mkdir -p secretos
 htpasswd -nbB "$INTRANET_USUARIO" "$INTRANET_CLAVE" > secretos/intranet.htpasswd
+# Lo lee Apache dentro del contenedor como www-data (gid 33 en la imagen php)
+chgrp 33 secretos/intranet.htpasswd
 chmod 640 secretos/intranet.htpasswd
 
 
-echo "== 5. Contenedores: dns, web, db y git (IAW · ASGBD · SRI)"
+echo "== 5. Contenedores: dns, web, db, git y kea (IAW · ASGBD · SRI)"
 
 docker compose up -d --build
 

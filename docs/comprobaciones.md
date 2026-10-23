@@ -11,18 +11,18 @@ o de `.env` (`source sede.env` antes de empezar).
 |---|---|---|---|---|
 | S1 | Los usuarios existen | `id ayoub` | `uid=…(ayoub) gid=…` | paso 1 de `instalar.sh`; claves en `sistema/usuarios/` |
 | S2 | Solo se entra por SSH con claves | `ssh -o PreferredAuthentications=password ayoub@$IP_AULA` | `Permission denied (publickey)` | `sistema/ssh/` aplicado en el paso 1 |
-| S3 | sshd con el endurecimiento activo | `sudo sshd -T \| grep -i passwordauth` | `passwordauthentication no` | copia de `sshd_config.d/` en el paso 1 |
+| S3 | sshd con el endurecimiento activo | `sudo sshd -T \| grep -i passwordauth` | `passwordauthentication no` | `00-sede-hardening.conf` en `sshd_config.d/` (paso 1); si sale `yes`, otro fichero se lee antes |
 
 ## Red (SRI · ASO)
 
 | # | Qué | Orden | Salida esperada | Si falla |
 |---|---|---|---|---|
 | R1 | IP del aula | `ip -4 addr show $INTERFAZ_AULA` | `192.168.6.118/24` | netplan (`red/netplan/`, paso 2) |
-| R2 | IP de la interna | `ip -4 addr show $INTERFAZ_INTERNA` | `10.4.0.1/24` | netplan (paso 2) |
+| R2 | IP de la interna | `ip -4 addr show $INTERFAZ_INTERNA` | `10.4.0.1/24` (en la misma tarjeta que R1) | netplan (paso 2) |
 | R3 | Reenvío activo | `sysctl net.ipv4.ip_forward` | `net.ipv4.ip_forward = 1` | `red/kernel/` (paso 2) |
 | R4 | NAT activo | `sudo nft list table ip sede_nat` | la regla `masquerade` | `red/nftables/` + `sede-nat.service` (paso 2) |
 | R5 | Un PC de la interna navega | desde un VPCS de GNS3: `ping 8.8.8.8` | contesta | NAT (paso 2) o puerta de enlace del DHCP |
-| R6 | DHCP de la interna | desde un VPCS: `ip dhcp` | `10.4.0.x`, gw y DNS `10.4.0.1` | Kea (paso 3); logs: `journalctl -u kea-dhcp4-server` |
+| R6 | DHCP de la interna | desde un VPCS: `ip dhcp` | `10.4.0.x`, gw y DNS `10.4.0.1` | Kea (pasos 3 y 5); logs: `docker compose logs kea` |
 
 ## DNS (SRI)
 
@@ -33,6 +33,7 @@ o de `.env` (`source sede.env` antes de empezar).
 | D3 | La interna recurre a internet | desde un PC de la interna: `dig @10.4.0.1 www.debian.org +short` | IPs del nombre externo | `allow-recursion` + forwarders en `named.conf.options` |
 | D4 | El aula NO recurre a internet | desde un PC del aula: `dig @192.168.6.118 www.debian.org +short` | `REFUSED` | ACLs en `named.conf.options` |
 | D5 | El secundario sirve la zona | desde ns2 (GNS3): `dig @10.4.0.2 www.calatayud.empresa.lan +short` | igual que D1 | `allow-transfer`/`also-notify` en `named.conf.local`; ficheros de `dns/ns2/` |
+| D0 | El 53 es del contenedor | `sudo ss -lunp \| grep ':53 '` | `docker-proxy`, no `systemd-resolve` | `red/resolved/` (paso 2) |
 | D6 | El contenedor de BIND está sano | `docker compose logs dns \| grep -iE 'error\|warn'` | sin errores de zona | volúmenes de `compose.yaml` |
 
 ## Web (IAW)

@@ -71,9 +71,10 @@ services:
     volumes:
       # El named.conf de esta imagen no incluye nada: el nuestro carga options y local.
       - ./dns/config/named.conf:/etc/bind/named.conf:ro
-      - ./dns/config/named.conf.options:/etc/bind/named.conf.options:ro
       - ./dns/config/named.conf.local:/etc/bind/named.conf.local:ro
-      - ./dns/zones:/var/lib/bind:ro
+      # Con la IP y la red del aula de sede.env: los genera instalar.sh (paso 5)
+      - ./generado/dns/named.conf.options:/etc/bind/named.conf.options:ro
+      - ./generado/dns/zones:/var/lib/bind:ro
 
     networks: [frontal]
 

@@ -3,7 +3,8 @@
 DS10 del encargo: las pruebas que cualquiera del equipo hace en el servidor para saber si la sede
 está bien, cada una con su orden y la salida esperada. Se hacen después de `sudo ./instalar.sh`.
 Todas se lanzan desde la carpeta del repositorio. Donde pone `$VAR`, es una variable de `sede.env`
-o de `.env` (`source sede.env` antes de empezar).
+o de `.env` (`source sede.env` antes de empezar). Las IPs `192.168.6.x` son las de la sede
+real: en otra red (`sede.local.env`), usad las vuestras.
 
 ## Sistema y SSH (ASO)
 

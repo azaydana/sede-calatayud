@@ -64,9 +64,11 @@ servidor sin acceso.
 ## Datos y claves
 
 - Datos de la sede (IP, interfaces, red interna, dominio, resolutor): `sede.env`. Van en Git.
+- Para probar en otra red (una VM, por ejemplo): las líneas que cambien, en
+  `sede.local.env`, que no va en Git y gana a `sede.env`.
 - Claves: `.env`, que no va en Git. Las que hacen falta están en `.env.example`.
 - El htpasswd de la intranet tampoco va en Git: lo genera el paso 4 en `secretos/`.
-- `generado/` (configuración de Kea) sale de `sede.env` en el paso 3: tampoco va en Git.
+- `generado/` (Kea en el paso 3; IP y red del aula del DNS en el 5) sale de `sede.env`: tampoco va en Git.
 
 ## Última prueba en limpio
 

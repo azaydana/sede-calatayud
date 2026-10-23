@@ -17,9 +17,10 @@ $TTL    86400
 ns1     IN      A       10.4.0.1
 ns2     IN      A       10.4.0.2
 ; srv = reachable desde las DOS redes:
-;  - 192.168.6.118 = red aula (los PC del aula NO llegan a 10.4.0.x)
+;  - IP_AULA de sede.env = red aula (los PC del aula NO llegan a 10.4.0.x);
+;    el marcador de srv lo sustituye instalar.sh (generado/dns/zones/)
 ;  - 10.4.0.1      = red interna laboratorio
-srv     IN      A       192.168.6.118
+srv     IN      A       __IP_AULA__
 correo  IN      A       10.4.0.1
 pc-01   IN      A       10.4.0.10
 pc-02   IN      A       10.4.0.11

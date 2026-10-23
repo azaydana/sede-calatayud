@@ -19,6 +19,11 @@ cd "$(dirname "$0")"
 
 # Cargamos los datos de la sede. A partir de aquí existen $SEDE, $DOMINIO, $IP_AULA…
 source sede.env
+# Cambios solo de esta máquina (otra red, otra tarjeta), fuera de Git: ganan a sede.env
+if [ -f sede.local.env ]; then
+    source sede.local.env
+    echo "Usando sede.local.env: IP $IP_AULA en $INTERFAZ_AULA"
+fi
 
 echo "== 0. Comprobaciones y paquetes"
 
@@ -54,6 +59,14 @@ for F in web/Dockerfile web/conf/site.conf db/init/01-esquema.sql dns/config/nam
          dns/zones/db.calatayud.empresa.lan dns/zones/db.10.4 red/kea/dhcp4.json; do
     if [ ! -f "$F" ]; then
         echo "ERROR: falta $F en el repositorio"
+        exit 1
+    fi
+done
+
+# ¿Están todos los datos de la sede? (sede.env + sede.local.env)
+for V in INTERFAZ_AULA IP_AULA RED_AULA PUERTA_AULA RESOLUTOR_CENTRO INTERFAZ_INTERNA IP_INTERNA DOMINIO; do
+    if [ -z "${!V:-}" ]; then
+        echo "ERROR: falta $V en sede.env"
         exit 1
     fi
 done
@@ -231,6 +244,14 @@ chmod 640 secretos/intranet.htpasswd
 
 
 echo "== 5. Contenedores: dns, web, db, git y kea (IAW · ASGBD · SRI)"
+
+# Fichas del DNS con __MARCADORES__ (IP y red del aula) rellenadas desde sede.env:
+# el contenedor dns monta generado/dns/ (compose.yaml)
+mkdir -p generado/dns/zones
+sed -e "s|__RED_AULA__|$RED_AULA|" dns/config/named.conf.options > generado/dns/named.conf.options
+sed -e "s|__IP_AULA__|$IP_AULA|" dns/zones/db.calatayud.empresa.lan > generado/dns/zones/db.calatayud.empresa.lan
+cp dns/zones/db.10.4 generado/dns/zones/db.10.4
+chmod 644 generado/dns/named.conf.options generado/dns/zones/*
 
 docker compose up -d --build
 

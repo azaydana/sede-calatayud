@@ -2,9 +2,11 @@
 
 Usuarios del servidor y acceso por SSH.
 
-- `usuarios/ayoub.pub`: clave pública de Ayoub. **Pendientes:** las de Younes,
-  Nico y el profesorado (una `.pub` por persona; el nombre del fichero es el del
-  usuario que se crea en el servidor).
+- `usuarios/*.pub`: una por persona; el nombre del fichero es el del usuario que
+  se crea en el servidor. `ayoub.pub` tiene su clave. `younes.pub` y `nico.pub`
+  están **vacíos**: el usuario se crea (grupo `sudo`), pero no entra por SSH
+  hasta que se pegue su clave pública (`~/.ssh/id_ed25519.pub` de su ordenador)
+  y se repita `sudo ./instalar.sh`. Pendiente también la del profesorado.
 - `ssh/00-sede-hardening.conf`: endurecimiento de sshd (solo acceso por clave,
   sesiones inactivas cortadas, root solo con clave). Empieza por `00-` porque
   sshd se queda con el primer valor que lee y Ubuntu trae `50-cloud-init.conf`

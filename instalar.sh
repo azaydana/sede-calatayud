@@ -70,7 +70,8 @@ if [ "$INTERFAZ_INTERNA" != "$INTERFAZ_AULA" ]; then
 fi
 
 # ¿Hay claves públicas para instalar? (sistema/usuarios/*.pub, una por persona)
-N_CLAVES=$(find sistema/usuarios -maxdepth 1 -name '*.pub' 2>/dev/null | wc -l)
+# Un .pub vacío crea el usuario igualmente, pero sin clave (no cuenta aquí).
+N_CLAVES=$(find sistema/usuarios -maxdepth 1 -name '*.pub' -size +0 2>/dev/null | wc -l)
 if [ "$N_CLAVES" -eq 0 ]; then
     echo "AVISO: no hay claves públicas en sistema/usuarios/ — el paso 1 solo instalará sshd base"
 fi
@@ -106,6 +107,11 @@ for PUB in sistema/usuarios/*.pub; do
     usermod -aG sudo "$PERSONA"
     if passwd -S "$PERSONA" | awk '{exit !($2 == "L" || $2 == "NP")}'; then
         echo "AVISO: $PERSONA no tiene contraseña: no podrá usar sudo. Ponédsela con: sudo passwd $PERSONA"
+    fi
+    # .pub vacío: usuario sin clave todavía; por SSH no entrará hasta que la tenga
+    if [ ! -s "$PUB" ]; then
+        echo "AVISO: $PERSONA no tiene clave en $PUB: no podrá entrar por SSH hasta que se añada"
+        continue
     fi
     # Authorized_keys: idempotente, la clave solo entra si no estaba (DS8)
     install -d -m 700 -o "$PERSONA" -g "$PERSONA" "/home/$PERSONA/.ssh"

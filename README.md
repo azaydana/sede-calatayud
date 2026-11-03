@@ -46,13 +46,13 @@ servidor sin acceso.
 | 2 | SRI·ASO | Netplan (IP del aula + interna en la misma tarjeta), reenvío (`sysctl`), NAT con `nftables` en su propia tabla, stub de systemd-resolved apagado (el 53 es del DNS) | La red antes que los servicios: las IPs que anuncia el DNS y el NAT del que dependen los PCs de la interna tienen que existir ya |
 | 3 | SRI·ASO | Genera la configuración de Kea (`generado/kea/`) para la red interna (10.4.0.10-200) | Va tras el netplan: Kea escucha en la IP interna ya configurada |
 | 4 | IAW | Genera `secretos/intranet.htpasswd` desde `.env` | Va antes de levantar los contenedores: la web lo monta al arrancar |
-| 5 | Todos | `docker compose up -d --build`: dns, web, db, git, kea | Al final: necesita usuarios, red, DNS publicable y secretos; el orden dentro lo da el `depends_on` de compose |
+| 5 | Todos | `docker compose up -d --build`: dns, web, db, git, kea; instala el cron de copias diarias (`/etc/cron.d/sede-copias`) | Al final: necesita usuarios, red, DNS publicable y secretos; el orden dentro lo da el `depends_on` de compose. Las copias, con los contenedores ya en marcha |
 
 ## Carpetas
 
 | Carpeta | Módulo | Responsable | Contenido |
 |---|---|---|---|
-| `sistema/` | ASO | Ayoub | Claves públicas por persona (`usuarios/*.pub`) y endurecimiento de sshd |
+| `sistema/` | ASO | Ayoub | Claves públicas por persona (`usuarios/*.pub`), endurecimiento de sshd y cron de copias diarias (`cron/`) |
 | `red/` | SRI · ASO | Ayoub | Netplan, `sysctl`, NAT (`nftables` + unit de systemd), systemd-resolved y DHCP con Kea |
 | `dns/` | SRI | Younes | BIND primario (configs + zonas directa e inversa) y ficheros del secundario (`ns2/`) |
 | `web/` | IAW | Nico | `Dockerfile`, VirtualHosts, `publica/`, `privada/` y sitio de pruebas `www/` |

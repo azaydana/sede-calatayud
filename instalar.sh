@@ -281,6 +281,11 @@ docker compose up -d --build
 # Scripts auxiliares ejecutables (copia de seguridad, restauración de prueba)
 chmod +x db/backup.sh db/restore-test.sh forgejo/backup.sh
 
+# Copias diarias a las 22:00 (BD y Forgejo): cron con la ruta de este repositorio
+sed -e "s|__REPO__|$(pwd)|" sistema/cron/sede-copias > /etc/cron.d/sede-copias
+chmod 644 /etc/cron.d/sede-copias
+echo "Copias diarias a las 22:00 en db/backups/ y forgejo/backups/ (registro: /var/log/sede-copias.log)."
+
 
 echo
 echo "Sede $SEDE instalada. Comprobaciones, una a una: docs/comprobaciones.md"

@@ -1,0 +1,9 @@
+# sistema/cron/sede-copias · ASGBD · Optativo
+# instalar.sh lo copia a /etc/cron.d/ cambiando __REPO__ por la carpeta del repositorio.
+#
+# Cada día a las 22:00: copia de PostgreSQL (db/backup.sh) y de Forgejo (forgejo/backup.sh).
+# Se guardan 14 días; lo más viejo se borra. Registro: /var/log/sede-copias.log
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 22 * * * root { cd '__REPO__' &&date && ./db/backup.sh && ./forgejo/backup.sh && find db/backups forgejo/backups -name '*.gz' -mtime +14 -delete; } >> /var/log/sede-copias.log 2>&1

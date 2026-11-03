@@ -90,6 +90,8 @@ services:
     environment:
       USER_UID: "1000"
       USER_GID: "1000"
+      # F2: sin registro libre; las cuentas las crea el administrador
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
       # Las URLs de clonado que enseña Forgejo: nombre del proxy y SSH por el 2222
       FORGEJO__server__ROOT_URL: http://git.calatayud.empresa.lan/
       FORGEJO__server__SSH_DOMAIN: git.calatayud.empresa.lan

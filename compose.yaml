@@ -110,6 +110,24 @@ services:
     restart: unless-stopped
 
 
+  # ============================================================ panel · IAW (reto 1)
+  # Panel del BIFI. panel.calatayud.empresa.lan responde vía proxy en web/conf/site.conf.
+  # Solo se sirve panel/public/ (ver panel/Dockerfile).
+  panel:
+    build: ./panel
+
+    ports:
+      - "8082:80"                     # para probar sin el proxy: http://IP_AULA:8082
+
+    volumes:
+      # Los JSON del panel: la primera vez se llena con panel/datos-ejemplo/
+      - datos-panel:/var/www/panel/datos
+
+    networks: [frontal]               # la misma red que web, para el proxy
+
+    restart: unless-stopped
+
+
   # ============================================================ kea · SRI · ASO
   # DHCP de la red interna (10.4.0.10-200). En la red del anfitrión: tiene que
   # oír los broadcast de INTERFAZ_INTERNA. La configuración la genera instalar.sh
@@ -130,6 +148,7 @@ services:
 volumes:
   datos:                              # Docker los crea la primera vez
   kea-leases:
+  datos-panel:                        # datos del panel: sobreviven al recrear el contenedor
 
 networks:
   frontal:                            # Docker crea las dos redes: nada de external

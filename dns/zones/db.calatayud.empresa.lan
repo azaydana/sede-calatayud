@@ -1,6 +1,6 @@
 $TTL    86400
 @       IN      SOA     ns1.calatayud.empresa.lan. admin.calatayud.empresa.lan. (
-                            2026091801 ; Serial AAAAMMDDNN (incrementar en cada cambio)
+                            2026111001 ; Serial AAAAMMDDNN (incrementar en cada cambio)
                                 3600   ; Refresh (1h, antes 7d: el esclavo tardaba días en ver cambios)
                                  600   ; Retry (10min, antes 1d)
                               604800   ; Expire (1 semana)
@@ -29,4 +29,5 @@ pc-02   IN      A       10.4.0.11
 www       IN    CNAME   srv
 intranet  IN    CNAME   srv
 git       IN    CNAME   srv
+panel     IN    CNAME   srv
 db        IN    CNAME   srv

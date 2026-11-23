@@ -134,6 +134,9 @@ services:
   # (paso 3) desde red/kea/dhcp4.json con los datos de sede.env.
   kea:
     image: jonasal/kea-dhcp4:3.0
+    # La imagen no trae CMD: sin -c, kea-dhcp4 imprime la ayuda, sale con
+    # error y Docker lo reinicia en bucle (Restarting).
+    command: ["-c", "/kea/config/dhcp4.json"]
 
     network_mode: host
     cap_add: [NET_ADMIN, NET_RAW]     # sockets en bruto para DHCP

@@ -4,9 +4,13 @@ services:
   panel:
     build: ./panel
     restart: unless-stopped
-    volumes:
-      - datos-panel:/var/www/panel/datos
+    environment:              # RA6: la base bifi con el rol panel
+      DB_HOST: db
+      DB_NOMBRE: bifi
+      DB_USUARIO: panel
+      DB_CLAVE: ${PANEL_CLAVE}
+    networks: [frontal, trasera]
+    depends_on:
+      db:
+        condition: service_healthy
     # ports: ["8081:80"]   # para probar sin el proxy de la sede
-
-volumes:
-  datos-panel:

@@ -15,16 +15,12 @@ function iniciar_sesion(): void
 
 function buscar_usuario(string $usuario): ?array
 {
-    foreach (leer_datos('usuarios') as $u) {
-        if ($u['usuario'] === $usuario) {
-            return $u;
-        }
-    }
-    return null;
+    return consulta('SELECT usuario, nombre, perfil, hash FROM usuario WHERE usuario = ?', [$usuario])[0]
+        ?? null;
 }
 
 /**
- * TODO (RA5 h). Comprueba usuario y contraseña contra datos/usuarios.json, que guarda el hash, nunca
+ * TODO (RA5 h). Comprueba usuario y contraseña contra la tabla usuario, que guarda el hash, nunca
  * la contraseña. Si son buenos, guarda en $_SESSION['usuario'] quién es y su perfil y devuelve true.
  * Pistas: buscar_usuario(), password_verify(), session_regenerate_id().
  */

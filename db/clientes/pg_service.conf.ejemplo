@@ -1,0 +1,21 @@
+# ~/.pg_service.conf de un responsable de proyecto · ASGBD RA2 (C8)
+#
+# Se copia al equipo del responsable, en su carpeta personal:
+#   cp pg_service.conf.ejemplo ~/.pg_service.conf
+# y se conecta con:
+#   psql service=bifi
+#
+# La contraseña NO va aquí: va en ~/.pgpass, una línea, con permisos 600:
+#   192.168.6.118:5432:bifi:resp_demo:LA-CLAVE
+#   chmod 600 ~/.pgpass
+# Con otros permisos (p. ej. 644) psql no lo usa, avisa y pide la clave.
+#
+# host es IP_AULA de sede.env.
+
+[bifi]
+host=192.168.6.118
+port=5432
+dbname=bifi
+user=resp_demo
+connect_timeout=5
+application_name=psql-responsable

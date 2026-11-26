@@ -51,9 +51,60 @@ real: en otra red (`sede.local.env`), usad las vuestras.
 | # | Qué | Orden | Salida esperada | Si falla |
 |---|---|---|---|---|
 | B1 | La BD nació poblada | `docker compose exec db psql -U "$DB_USUARIO" -d "$DB_NOMBRE" -c 'SELECT count(*) FROM clientes;'` | `25` | `db/init/01-esquema.sql` montado en `compose.yaml` |
-| B2 | La web tiene usuario propio, no superusuario | `docker compose exec db psql -U "$DB_USUARIO" -c '\du'` | solo el usuario de la BD y postgres | `.env` + `POSTGRES_USER` |
-| B3 | Copia de seguridad | `./db/backup.sh` | `OK db/backups/sede-…sql.gz` | permisos de `db/backups/` |
+| B2 | La web tiene rol propio, no superusuario | `docker compose exec db psql -U "$DB_USUARIO" -c '\du'` | `Superuser` solo en `$DB_USUARIO`; `web`, `panel` y `resp_demo` sin atributos; `responsables` `Cannot login` | `db/init/03-claves.sh`; `WEB_*` en `.env` |
+| B3 | Copia de seguridad | `./db/backup.sh` | `OK db/backups/sede-…sql.gz` y `OK db/backups/bifi-…sql.gz` | permisos de `db/backups/` |
 | B4 | La copia devuelve las filas | `./db/restore-test.sh db/backups/sede-*.sql.gz` | `filas_restauradas 25` + `RESTORE OK` | integridad del `.sql.gz` (B3) |
+
+## Base del BIFI abierta a clientes de fuera (ASGBD RA2 · Reto 1)
+
+Pruebas P1 a P8 del encargo, en este orden. `CLIENTE` es un contenedor de usar y tirar en la red de
+la composición donde está `db` (la `trasera`):
+
+```bash
+source .env
+CLIENTE="docker run --rm --network sede-calatayud_trasera -e PGCONNECT_TIMEOUT=5 postgres:16-alpine"
+```
+
+Las salidas son las de la prueba del 25/11/2026 en una composición aislada. Las IPs de Docker
+(`172.x`) cambian de un servidor a otro.
+
+| # | Qué | Orden | Salida esperada | Si falla |
+|---|---|---|---|---|
+| P1 | El panel entra desde la red de Compose | `$CLIENTE env PGPASSWORD=$PANEL_CLAVE psql -h db -U panel -d bifi -Atc "SELECT current_user, inet_client_addr()"` | `panel\|172.20.0.5` (una IP de la `trasera`) | línea 4 de `pg_hba.conf`; `PANEL_CLAVE` en `.env` y `03-claves.sh` |
+| P2 | El administrador no entra por red | `$CLIENTE env PGPASSWORD=$DB_CLAVE psql -h db -U $DB_USUARIO -d postgres -c 'SELECT 1'` | `FATAL:  pg_hba.conf rejects connection for host "172.20.0.5", user "sede", database "postgres"` | línea 2 de `pg_hba.conf` |
+| P3 | Un responsable entra desde **otro equipo** del aula | en ese equipo, con `~/.pg_service.conf` (de `db/clientes/`) y `~/.pgpass` en `600`: `psql service=bifi -c "SELECT current_user, inet_client_addr()"` | `resp_demo` y la IP de ese equipo (`192.168.6.x`) | puerto publicado (`ss -ltn \| grep 5432` en el servidor), línea 6 de `pg_hba.conf` |
+| P3b | …y no desde el propio servidor | en el servidor: `psql "host=$IP_AULA user=resp_demo dbname=bifi"` | `pg_hba.conf rejects connection for host "192.168.6.118"` | línea 5 de `pg_hba.conf` |
+| P4 | Un responsable no entra en otra base | `psql "host=$IP_AULA user=resp_demo dbname=postgres"` (desde el equipo del aula) | `pg_hba.conf rejects connection … database "postgres"` | líneas 6 y 7 de `pg_hba.conf` |
+| P5 | Límite de conexiones | dos sesiones de `resp_demo` con `SELECT pg_sleep(30)` y una tercera | `FATAL:  too many connections for role "resp_demo"` | `CONNECTION LIMIT 2` en `02-bifi.sql` |
+| P6 | Tiempo máximo de una sentencia | `$CLIENTE env PGPASSWORD=$PANEL_CLAVE psql -h db -U panel -d bifi -c "SELECT pg_sleep(6)"` | `ERROR:  canceling statement due to statement timeout` | `ALTER ROLE panel SET statement_timeout` en `02-bifi.sql` |
+| P7 | La base y sus valores | `docker compose exec db psql -U $DB_USUARIO -c '\l bifi'` y `docker compose exec db psql -U $DB_USUARIO -d bifi -c 'SHOW timezone'` | `UTF8`, `icu`, `es-ES`; privilegios `sede=CTc/sede`, `panel=c/sede`, `responsables=c/sede` (sin `=Tc/sede` de `PUBLIC`); `Europe/Madrid` | `CREATE DATABASE` de `02-bifi.sql`: si la base ya existía, no cambia |
+| P8 | Contraseñas y reglas | `docker compose exec db psql -U $DB_USUARIO -c "SELECT rolname, left(rolpassword,13) FROM pg_authid WHERE rolcanlogin"` y `… -c "SELECT line_number, database, user_name, address, auth_method, error FROM pg_hba_file_rules"` | los 4 roles `SCRAM-SHA-256`; 7 reglas en este orden, sin `error` | `password_encryption`; volver a poner la clave (`03-claves.sh`) |
+| P9 | `.pgpass` con permisos `644` | en el equipo del aula: `chmod 644 ~/.pgpass; psql service=bifi -w -c 'SELECT 1'` | `WARNING: password file "…/.pgpass" has group or world access; permissions should be u=rw (0600) or less` y `fe_sendauth: no password supplied` | es lo esperado: `chmod 600 ~/.pgpass` |
+
+Resultado de P8 (reglas, con el `pg_hba.conf` generado por `instalar.sh`):
+
+```text
+ line_number | database |    user_name     |    address     | auth_method   | error
+-------------+----------+------------------+----------------+---------------+-------
+          16 | {all}    | {all}            |                | trust         |
+          19 | {all}    | {sede}           | all            | reject        |
+          22 | {sede}   | {web}            | samenet        | scram-sha-256 |
+          25 | {bifi}   | {panel}          | samenet        | scram-sha-256 |
+          29 | {bifi}   | {+responsables}  | 192.168.6.118  | reject        |
+          32 | {bifi}   | {+responsables}  | 192.168.6.0    | scram-sha-256 |
+          35 | {all}    | {all}            | all            | reject        |
+```
+
+## Base del BIFI: datos, vistas y panel (ASGBD RA3 · IAW RA6)
+
+| # | Qué | Orden | Salida esperada | Si falla |
+|---|---|---|---|---|
+| B5 | `bifi` nació poblada | `docker compose exec db psql -U $DB_USUARIO -d bifi -Atc "SELECT (SELECT count(*) FROM proyecto), (SELECT count(*) FROM uso), (SELECT count(*) FROM usuario)"` | `5\|20\|10` (más lo que se haya dado de alta) | `db/init/02-bifi.sql` |
+| B6 | Las reglas del modelo las pone la base | `docker compose exec db psql -U $DB_USUARIO -d bifi -c "INSERT INTO participa VALUES ('BIO-0001','marta')"` | `ERROR:  El miembro «marta» no tiene perfil investigador` | disparadores de `02-bifi.sql` |
+| B7 | Un responsable solo ve lo suyo (RA3) | desde el equipo del aula: `psql service=bifi -c 'SELECT * FROM mi_factura'` | solo BIO-0001 (34,24) y QUI-0003 (26,88): los de Marta | `cuenta_bd` y vistas de `02-bifi.sql` |
+| B8 | …y no las tablas | `psql service=bifi -c 'SELECT * FROM usuario'` | `ERROR:  permission denied for table usuario` | `GRANT` de `02-bifi.sql` |
+| B9 | El panel lee de PostgreSQL (RA6) | entrar en el panel como `cesar` / `bifi2026` | los 5 proyectos; un alta nueva aparece en `SELECT * FROM proyecto` | `DB_*` del servicio `panel`; `docker compose logs panel` |
+| B10 | El panel no puede más de lo que necesita | `$CLIENTE env PGPASSWORD=$PANEL_CLAVE psql -h db -U panel -d bifi -c 'DELETE FROM uso'` | `ERROR:  permission denied for table uso` | `GRANT` de `02-bifi.sql` |
 
 ## Forgejo (optativo · git)
 

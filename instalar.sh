@@ -45,7 +45,8 @@ fi
 source .env
 
 # ¿Queda alguna clave sin cambiar o vacía? (DS3: nada de valores de fábrica)
-for V in DB_NOMBRE DB_USUARIO DB_CLAVE INTRANET_USUARIO INTRANET_CLAVE; do
+for V in DB_NOMBRE DB_USUARIO DB_CLAVE WEB_USUARIO WEB_CLAVE PANEL_CLAVE RESP_DEMO_CLAVE \
+         INTRANET_USUARIO INTRANET_CLAVE; do
     VALOR="${!V:-}"
     if [ -z "$VALOR" ] || [ "$VALOR" = "cambiar" ]; then
         echo "ERROR: la variable $V está vacía o sin cambiar en .env"
@@ -54,7 +55,8 @@ for V in DB_NOMBRE DB_USUARIO DB_CLAVE INTRANET_USUARIO INTRANET_CLAVE; do
 done
 
 # ¿Los ficheros que van a entrar en contenedores están en su sitio?
-for F in web/Dockerfile web/conf/site.conf db/init/01-esquema.sql dns/config/named.conf \
+for F in web/Dockerfile web/conf/site.conf db/init/01-esquema.sql db/init/02-bifi.sql \
+         db/init/03-claves.sh db/conf/postgresql.conf db/conf/pg_hba.conf dns/config/named.conf \
          dns/config/named.conf.local dns/config/named.conf.options \
          dns/zones/db.calatayud.empresa.lan dns/zones/db.10.4 red/kea/dhcp4.json; do
     if [ ! -f "$F" ]; then
@@ -276,10 +278,38 @@ sed -e "s|__IP_AULA__|$IP_AULA|" dns/zones/db.calatayud.empresa.lan > generado/d
 cp dns/zones/db.10.4 generado/dns/zones/db.10.4
 chmod 644 generado/dns/named.conf.options generado/dns/zones/*
 
+# pg_hba.conf de la base (RA2): nombres de .env y red del aula de sede.env.
+# El fichero se reescribe en su sitio (mismo inodo): el contenedor lo ve sin recrearse.
+mkdir -p generado/db
+sed -e "s|__ADMIN__|$DB_USUARIO|" \
+    -e "s|__DB_NOMBRE__|$DB_NOMBRE|" \
+    -e "s|__WEB_USUARIO__|$WEB_USUARIO|" \
+    -e "s|__IP_AULA__|$IP_AULA|" \
+    -e "s|__RED_AULA__|$RED_AULA|" \
+    db/conf/pg_hba.conf > generado/db/pg_hba.conf
+chmod 644 generado/db/pg_hba.conf
+
+# Compose solo lee .env: le copiamos IP_AULA (para publicar el 5432 solo ahí, C2).
+# Va al final de .env, debajo de la marca; se reescribe en cada ejecución (DS8).
+MARCA="# --- Lo de debajo lo escribe instalar.sh desde sede.env: no lo toquéis aquí ---"
+grep -qxF "$MARCA" .env || printf '\n%s\n' "$MARCA" >> .env
+# Se queda con todo hasta la marca (incluida) y añade los valores de ahora.
+# cat > .env en vez de mv: .env conserva su dueño y sus permisos 600.
+ENV_NUEVO=$(awk -v m="$MARCA" '{ print } $0 == m { exit }' .env)
+printf '%s\nIP_AULA=%s\n' "$ENV_NUEVO" "$IP_AULA" > .env
+
 docker compose up -d --build
 
+# Con un volumen que ya existía, db/init/ no se ejecuta: 02 y 03 se lanzan a mano.
+# Los dos son idempotentes. Después se recarga pg_hba.conf por si ha cambiado.
+docker compose exec -T -e PGOPTIONS='-c client_min_messages=warning' db \
+    psql -q -v ON_ERROR_STOP=1 -U "$DB_USUARIO" -d postgres < db/init/02-bifi.sql
+docker compose exec -T db sh /docker-entrypoint-initdb.d/03-claves.sh
+docker compose exec -T db psql -q -U "$DB_USUARIO" -d postgres -c 'SELECT pg_reload_conf()' >/dev/null
+echo "Base bifi y claves de los roles al día (db/init/02-bifi.sql y 03-claves.sh)."
+
 # Scripts auxiliares ejecutables (copia de seguridad, restauración de prueba)
-chmod +x db/backup.sh db/restore-test.sh forgejo/backup.sh
+chmod +x db/backup.sh db/restore-test.sh db/init/03-claves.sh forgejo/backup.sh
 
 # Copias diarias a las 22:00 (BD y Forgejo): cron con la ruta de este repositorio
 sed -e "s|__REPO__|$(pwd)|" sistema/cron/sede-copias > /etc/cron.d/sede-copias

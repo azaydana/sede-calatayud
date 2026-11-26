@@ -22,8 +22,10 @@ services:
     environment:                      # variables que ve PHP con getenv()
       DB_HOST: db                     # el nombre del servicio de la base de datos, más abajo
       DB_NOMBRE: ${DB_NOMBRE}
-      DB_USUARIO: ${DB_USUARIO}       # D3: la web tiene su propio usuario, limitado a su BD
-      DB_CLAVE: ${DB_CLAVE}
+      # D3: la web tiene su propio rol, que solo lee clientes en su BD (db/init/03-claves.sh).
+      # No es el administrador: ese no entra por red (db/conf/pg_hba.conf, línea 2).
+      DB_USUARIO: ${WEB_USUARIO}
+      DB_CLAVE: ${WEB_CLAVE}
 
     networks: [frontal, trasera]      # frontal para el aula, trasera para hablar con db
 
@@ -35,26 +37,54 @@ services:
 
 
   # ============================================================ db · ASGBD
-  # Nace con su tabla y sus 25 filas: db/init/01-esquema.sql se ejecuta al
-  # crear el volumen por primera vez (DS6). El usuario solo ve su BD (D3).
+  # Nace con todo al crear el volumen por primera vez (DS6), en este orden:
+  #   01-esquema.sql  BD de la web: tabla clientes y sus 25 filas
+  #   02-bifi.sql     roles, base bifi, tablas, vistas y datos del BIFI (Reto 1)
+  #   03-claves.sh    contraseñas desde .env y rol propio de la web
+  # instalar.sh vuelve a lanzar 02 y 03 en cada ejecución (son idempotentes).
+  # Configuración en db/conf/ (RA2): todo explicado en db/README.md.
   db:
     image: postgres:16-alpine         # versión mayor fijada (D1)
 
+    # Nuestro postgresql.conf en vez del de PGDATA (C1). Él dice dónde está pg_hba.conf.
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
     environment:
       POSTGRES_DB: ${DB_NOMBRE}
-      POSTGRES_USER: ${DB_USUARIO}
+      POSTGRES_USER: ${DB_USUARIO}    # el administrador (admin_sede): solo por el socket
       POSTGRES_PASSWORD: ${DB_CLAVE}
+      # Para db/init/03-claves.sh
+      DB_NOMBRE: ${DB_NOMBRE}
+      WEB_USUARIO: ${WEB_USUARIO}
+      WEB_CLAVE: ${WEB_CLAVE}
+      PANEL_CLAVE: ${PANEL_CLAVE}
+      RESP_DEMO_CLAVE: ${RESP_DEMO_CLAVE}
 
     volumes:
       - ./db/init:/docker-entrypoint-initdb.d:ro   # esquema + filas al nacer
+      - ./db/conf/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # Con la red del aula y los nombres de .env: lo genera instalar.sh (paso 5)
+      - ./generado/db/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - datos:/var/lib/postgresql/data             # datos en volumen: sobreviven
 
-    networks: [trasera]               # solo en la red interna: desde el aula no se llega
+    # C2: el 5432 solo en la IP del aula, para los responsables con psql.
+    # IP_AULA la copia instalar.sh de sede.env a .env (Compose solo lee .env).
+    ports:
+      - "${IP_AULA}:5432:5432"
+
+    # trasera: la web y el panel. bd-aula: solo para publicar el puerto
+    # (una red internal no publica puertos). Quién entra lo decide pg_hba.conf.
+    networks: [trasera, bd-aula]
 
     healthcheck:                      # cómo sabe Compose que la base de datos está lista
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 5s
       retries: 10
+
+    # C9: docker compose stop manda SIGINT (STOPSIGNAL de la imagen): parada fast.
+    # Si a los 10 s no ha terminado, Docker manda SIGKILL y al arrancar hay recuperación.
+    # 30 s le dan tiempo al checkpoint final aunque haya escrituras pendientes.
+    stop_grace_period: 30s
 
     restart: unless-stopped
 
@@ -113,17 +143,25 @@ services:
   # ============================================================ panel · IAW (reto 1)
   # Panel del BIFI. panel.calatayud.empresa.lan responde vía proxy en web/conf/site.conf.
   # Solo se sirve panel/public/ (ver panel/Dockerfile).
+  # RA6: los datos están en la base bifi, con el rol panel (privilegio mínimo).
   panel:
     build: ./panel
 
     ports:
       - "8082:80"                     # para probar sin el proxy: http://IP_AULA:8082
 
-    volumes:
-      # Los JSON del panel: la primera vez se llena con panel/datos-ejemplo/
-      - datos-panel:/var/www/panel/datos
+    environment:
+      DB_HOST: db
+      DB_NOMBRE: bifi
+      DB_USUARIO: panel
+      DB_CLAVE: ${PANEL_CLAVE}
 
-    networks: [frontal]               # la misma red que web, para el proxy
+    # frontal: la misma red que web, para el proxy. trasera: para llegar a db.
+    networks: [frontal, trasera]
+
+    depends_on:
+      db:
+        condition: service_healthy
 
     restart: unless-stopped
 
@@ -151,7 +189,6 @@ services:
 volumes:
   datos:                              # Docker los crea la primera vez
   kea-leases:
-  datos-panel:                        # datos del panel: sobreviven al recrear el contenedor
 
 networks:
   frontal:                            # Docker crea las dos redes: nada de external
@@ -162,3 +199,4 @@ networks:
         - subnet: 172.22.0.0/16
   trasera:
     internal: true                    # red sin salida: solo se ven los contenedores entre sí
+  bd-aula:                            # solo db: por aquí entra el 5432 publicado (C2)

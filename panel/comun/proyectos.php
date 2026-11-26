@@ -26,29 +26,70 @@ function puede_gestionar(array $u, array $proyecto): bool
         || ($u['perfil'] === 'responsable' && $proyecto['responsable'] === $u['usuario']);
 }
 
+/**
+ * Proyectos con la lista de sus miembros, como los usan las páginas:
+ * ['codigo', 'titulo', 'responsable', 'tarifa', 'miembros' => ['ana', …]].
+ * $donde es un filtro SQL con parámetros con nombre.
+ */
+function proyectos_donde(string $donde, array $parametros = []): array
+{
+    $filas = consulta(
+        "SELECT p.codigo, p.titulo, p.responsable, p.tarifa,
+                coalesce(json_agg(pa.usuario ORDER BY pa.usuario)
+                         FILTER (WHERE pa.usuario IS NOT NULL), '[]') AS miembros
+         FROM proyecto p
+         LEFT JOIN participa pa ON pa.proyecto = p.codigo
+         WHERE $donde
+         GROUP BY p.codigo
+         ORDER BY p.codigo",
+        $parametros
+    );
+    foreach ($filas as &$fila) {
+        $fila['miembros'] = json_decode($fila['miembros'], true);
+    }
+    return $filas;
+}
+
+/**
+ * La misma regla que puede_ver(), pero en la consulta: la base solo devuelve lo que el perfil
+ * puede ver, y el panel no carga proyectos ajenos.
+ */
 function proyectos_visibles(array $u): array
 {
-    return array_values(array_filter(leer_datos('proyectos'), fn ($p) => puede_ver($u, $p)));
+    return match ($u['perfil']) {
+        'cesar'        => proyectos_donde('true'),
+        'responsable'  => proyectos_donde('p.responsable = :u', ['u' => $u['usuario']]),
+        'investigador' => proyectos_donde(
+            'EXISTS (SELECT FROM participa m WHERE m.proyecto = p.codigo AND m.usuario = :u)',
+            ['u' => $u['usuario']]
+        ),
+        default => [],
+    };
 }
 
 function buscar_proyecto(string $codigo): ?array
 {
-    foreach (leer_datos('proyectos') as $p) {
-        if ($p['codigo'] === $codigo) {
-            return $p;
-        }
-    }
-    return null;
+    return proyectos_donde('p.codigo = :codigo', ['codigo' => $codigo])[0] ?? null;
 }
 
 function usuarios_con_perfil(string $perfil): array
 {
-    return array_values(array_filter(leer_datos('usuarios'), fn ($u) => $u['perfil'] === $perfil));
+    return consulta('SELECT usuario, nombre, perfil FROM usuario WHERE perfil = ? ORDER BY nombre', [$perfil]);
 }
 
+/** Los trabajos de un proyecto, del más antiguo al más reciente. */
 function usos_de(string $codigo): array
 {
-    return array_values(array_filter(leer_datos('usos'), fn ($uso) => $uso['proyecto'] === $codigo));
+    $usos = consulta(
+        "SELECT proyecto, usuario, maquina, to_char(fecha, 'YYYY-MM-DD') AS fecha, nucleos, horas
+         FROM uso WHERE proyecto = ? ORDER BY fecha, id",
+        [$codigo]
+    );
+    foreach ($usos as &$uso) {
+        $uso['nucleos'] = (int) $uso['nucleos'];
+        $uso['horas'] = (float) $uso['horas'];   // numeric llega como texto: '6.50'
+    }
+    return $usos;
 }
 
 function nucleo_horas(array $usos): float
@@ -100,10 +141,31 @@ function validar_proyecto(array $entrada, array $u): array
 }
 
 /**
+ * Guarda un proyecto ya validado. Devuelve un mensaje de error, o '' si ha ido bien.
+ * Si otra persona ha dado de alta el mismo código entre la validación y el INSERT, la clave
+ * primaria lo para (23505) y se dice como un error más del formulario.
+ */
+function crear_proyecto(array $p): string
+{
+    try {
+        ejecutar(
+            'INSERT INTO proyecto (codigo, titulo, responsable, tarifa) VALUES (?, ?, ?, ?)',
+            [$p['codigo'], trim($p['titulo']), $p['responsable'], $p['tarifa']]
+        );
+        return '';
+    } catch (PDOException $ex) {
+        if ($ex->getCode() === '23505') {
+            return 'Ya existe un proyecto con ese código.';
+        }
+        throw $ex;
+    }
+}
+
+/**
  * TODO (RA5 f). Añade o quita un investigador de un proyecto (formulario de proyecto.php).
  * $entrada['accion'] es 'anadir' o 'quitar'; $entrada['investigador'], el usuario.
- * Comprobad que es un investigador que existe y que no está ya (al añadir), cambiad
- * $proyecto['miembros'] y guardad la lista de proyectos con guardar_datos('proyectos', …).
+ * Comprueba que es un investigador que existe; que no esté ya (al añadir) o que esté (al quitar)
+ * lo dice la propia base: ON CONFLICT y el número de filas borradas.
  * Devuelve un mensaje de error, o '' si ha ido bien.
  */
 function gestionar_miembros(array $proyecto, array $entrada): string
@@ -118,31 +180,22 @@ function gestionar_miembros(array $proyecto, array $entrada): string
         return 'Selecciona un investigador válido.';
     }
 
-    $proyectos = leer_datos('proyectos');
-    foreach ($proyectos as $indice => $actual) {
-        if ($actual['codigo'] !== $proyecto['codigo']) {
-            continue;
-        }
-
-        $miembros = $actual['miembros'];
-        $posicion = array_search($investigador, $miembros, true);
-
-        if ($accion === 'anadir') {
-            if ($posicion !== false) {
-                return 'El investigador ya pertenece al proyecto.';
-            }
-            $miembros[] = $investigador;
-        } else {
-            if ($posicion === false) {
-                return 'El investigador no pertenece al proyecto.';
-            }
-            unset($miembros[$posicion]);
-        }
-
-        $proyectos[$indice]['miembros'] = array_values($miembros);
-        guardar_datos('proyectos', $proyectos);
-        return '';
+    if ($accion === 'quitar') {
+        $borradas = ejecutar('DELETE FROM participa WHERE proyecto = ? AND usuario = ?',
+            [$proyecto['codigo'], $investigador]);
+        return $borradas === 1 ? '' : 'El investigador no pertenece al proyecto.';
     }
 
-    return 'El proyecto ya no está disponible.';
+    try {
+        $metidas = ejecutar(
+            'INSERT INTO participa (proyecto, usuario) VALUES (?, ?) ON CONFLICT DO NOTHING',
+            [$proyecto['codigo'], $investigador]
+        );
+    } catch (PDOException $ex) {
+        if ($ex->getCode() === '23503') {     // clave ajena: el proyecto ya no existe
+            return 'El proyecto ya no está disponible.';
+        }
+        throw $ex;
+    }
+    return $metidas === 1 ? '' : 'El investigador ya pertenece al proyecto.';
 }
